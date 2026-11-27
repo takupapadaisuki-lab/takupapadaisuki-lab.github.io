@@ -22,17 +22,22 @@
   function getKey(){ try{ var k=localStorage.getItem(SKEY); if(k && k.length>=16) return k; var nk=(window.crypto && crypto.randomUUID)? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)); localStorage.setItem(SKEY, nk); return nk; }catch(e){ return null; } }
   function getAt(){ try{ return parseInt(localStorage.getItem(ATKEY)||'0',10)||0; }catch(e){ return 0; } }
   function setAt(t){ try{ localStorage.setItem(ATKEY, String(t)); }catch(e){} }
+  function progressOf(st){ try{ var t=0; var ss=(st&&st.stats)||{}; for(var k in ss){ var arr=ss[k]||[]; for(var i=0;i<arr.length;i++){ if(arr[i]) t+=(arr[i][0]||0); } } return t; }catch(e){ return 0; } }
+  var lastRemoteProgress=0;
   var dirty=false;
   var pushTimer=null;
   var db=null, docRef=null, fsMod=null;
   function push(){
     if(!db || !docRef || !fsMod) return;
     var st=mem || loadLocal(); if(!st) return;
+    if(progressOf(st)===0 && lastRemoteProgress>0) return;
     var t=Date.now(); setAt(t);
     fsMod.setDoc(docRef, {state: st, updatedAt: t}).catch(function(){});
   }
   function schedulePush(){ if(pushTimer) clearTimeout(pushTimer); pushTimer=setTimeout(push, 800); }
   function adopt(remoteState, remoteAt){
+    var lp=progressOf(mem || loadLocal());
+    if(lp>0 && progressOf(remoteState)<lp) return;
     saveLocal(remoteState); setAt(remoteAt);
     try{ window.dispatchEvent(new CustomEvent('hatch-widget-state', {detail:{state: remoteState}})); }catch(e){}
   }
@@ -50,7 +55,7 @@
     var btnCopy=document.createElement('button'); btnCopy.className='btn syncbox-btn'; btnCopy.textContent='コピー';
     btnCopy.addEventListener('click', function(){ if(navigator.clipboard) navigator.clipboard.writeText(getKey()); btnCopy.textContent='コピーしました'; setTimeout(function(){ btnCopy.textContent='コピー'; },1500); });
     var btnSet=document.createElement('button'); btnSet.className='btn syncbox-btn'; btnSet.textContent='キーを切り替える';
-    btnSet.addEventListener('click', function(){ var nk=window.prompt('もう一方の端末の同期キーを入力してください'); if(nk && nk.trim().length>=16){ try{ localStorage.setItem(SKEY, nk.trim()); }catch(e){} location.reload(); } });
+    btnSet.addEventListener('click', function(){ var nk=window.prompt('もう一方の端末の同期キーを入力してください'); if(nk && nk.trim().length>=16){ try{ localStorage.setItem(SKEY, nk.trim()); localStorage.setItem(ATKEY, '0'); }catch(e){} location.reload(); } });
     row.appendChild(code); row.appendChild(btnCopy); row.appendChild(btnSet);
     box.appendChild(label); box.appendChild(row);
     wrap.appendChild(box);
@@ -69,6 +74,7 @@
     return fsMod.getDoc(docRef).then(function(snap){
       if(snap.exists()){
         var d=snap.data();
+        if(d && d.state) lastRemoteProgress=progressOf(d.state);
         if(d && d.state && d.updatedAt && d.updatedAt>getAt() && !dirty){ adopt(d.state, d.updatedAt); }
       } else {
         if(loadLocal()) push();
@@ -76,6 +82,7 @@
       fsMod.onSnapshot(docRef, function(snap2){
         if(!snap2.exists()) return;
         var d2=snap2.data();
+        if(d2 && d2.state) lastRemoteProgress=progressOf(d2.state);
         if(d2 && d2.state && d2.updatedAt && d2.updatedAt>getAt() && !dirty){ adopt(d2.state, d2.updatedAt); }
       });
     });
