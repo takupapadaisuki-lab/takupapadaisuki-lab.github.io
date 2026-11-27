@@ -19,7 +19,7 @@
   var mem=null;
   function loadLocal(){ try{ var s=localStorage.getItem(KEY); if(s){ mem=JSON.parse(s); return mem; } }catch(e){} return null; }
   function saveLocal(st){ mem=st; try{ localStorage.setItem(KEY, JSON.stringify(st)); }catch(e){} }
-  function getKey(){ try{ var k=localStorage.getItem(SKEY); if(k && k.length>=16) return k; var nk=(window.crypto && crypto.randomUUID)? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)); localStorage.setItem(SKEY, nk); return nk; }catch(e){ return null; } }
+  function getKey(){ return 'wz5wnu57pey0prk4m951k104bf020x0t'; }
   function getAt(){ try{ return parseInt(localStorage.getItem(ATKEY)||'0',10)||0; }catch(e){ return 0; } }
   function setAt(t){ try{ localStorage.setItem(ATKEY, String(t)); }catch(e){} }
   function progressOf(st){ try{ var t=0; var ss=(st&&st.stats)||{}; for(var k in ss){ var arr=ss[k]||[]; for(var i=0;i<arr.length;i++){ if(arr[i]) t+=(arr[i][0]||0); } } return t; }catch(e){ return 0; } }
@@ -45,22 +45,6 @@
     getState:function(def){ var m=loadLocal(); if(m) return Object.assign({}, def, m); return Object.assign({}, def); },
     setState:function(st){ saveLocal(st); dirty=true; schedulePush(); }
   };
-  function buildSyncBox(){
-    if(document.getElementById('syncbox')) return;
-    var wrap=document.querySelector('.wrap'); if(!wrap) return;
-    var box=document.createElement('div'); box.id='syncbox'; box.className='syncbox';
-    var label=document.createElement('div'); label.className='syncbox-label'; label.textContent='同期キー（スマホとPCで同じ記録にするためのキー）';
-    var row=document.createElement('div'); row.className='syncbox-row';
-    var code=document.createElement('code'); code.className='syncbox-key'; code.textContent=getKey()||'';
-    var btnCopy=document.createElement('button'); btnCopy.className='btn syncbox-btn'; btnCopy.textContent='コピー';
-    btnCopy.addEventListener('click', function(){ if(navigator.clipboard) navigator.clipboard.writeText(getKey()); btnCopy.textContent='コピーしました'; setTimeout(function(){ btnCopy.textContent='コピー'; },1500); });
-    var btnSet=document.createElement('button'); btnSet.className='btn syncbox-btn'; btnSet.textContent='キーを切り替える';
-    btnSet.addEventListener('click', function(){ var nk=window.prompt('もう一方の端末の同期キーを入力してください'); if(nk && nk.trim().length>=16){ try{ localStorage.setItem(SKEY, nk.trim()); localStorage.setItem(ATKEY, '0'); }catch(e){} location.reload(); } });
-    row.appendChild(code); row.appendChild(btnCopy); row.appendChild(btnSet);
-    box.appendChild(label); box.appendChild(row);
-    wrap.appendChild(box);
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', buildSyncBox); else buildSyncBox();
   var config={apiKey:"AIzaSyDOugjJBZF8bJgtOZ-ZPJIpGiSd0zcwmc8",authDomain:"fe-quiz-sync.firebaseapp.com",projectId:"fe-quiz-sync",storageBucket:"fe-quiz-sync.firebasestorage.app",messagingSenderId:"624934588626",appId:"1:624934588626:web:db74c2f5c3a6d521311d0b"};
   Promise.all([
     import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'),
