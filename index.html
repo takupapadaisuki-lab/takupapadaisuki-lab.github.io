@@ -11,10 +11,11 @@
 <meta name="color-scheme" content="dark">
 </head>
 <body>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 (function(){
   var KEY='fequiz-state-v1';
-  var SKEY='fequiz-synckey';
   var ATKEY='fequiz-syncat';
   var mem=null;
   function loadLocal(){ try{ var s=localStorage.getItem(KEY); if(s){ mem=JSON.parse(s); return mem; } }catch(e){} return null; }
@@ -26,13 +27,15 @@
   var lastRemoteProgress=0;
   var dirty=false;
   var pushTimer=null;
-  var db=null, docRef=null, fsMod=null;
+  var docRef=null;
+  function setStatus(t){ try{ var el=document.getElementById('syncstatus'); if(el) el.textContent=t; }catch(e){} }
+  function errText(err){ return (err && err.message) ? err.message : String(err); }
   function push(){
-    if(!db || !docRef || !fsMod) return;
+    if(!docRef) return;
     var st=mem || loadLocal(); if(!st) return;
     if(progressOf(st)===0 && lastRemoteProgress>0) return;
     var t=Date.now(); setAt(t);
-    fsMod.setDoc(docRef, {state: st, updatedAt: t}).catch(function(){});
+    docRef.set({stateJson: JSON.stringify(st), updatedAt: t}).then(function(){ setStatus('同期：保存しました'); }).catch(function(err){ setStatus('同期：エラー（'+errText(err)+'）'); });
   }
   function schedulePush(){ if(pushTimer) clearTimeout(pushTimer); pushTimer=setTimeout(push, 800); }
   function adopt(remoteState, remoteAt){
@@ -45,32 +48,44 @@
     getState:function(def){ var m=loadLocal(); if(m) return Object.assign({}, def, m); return Object.assign({}, def); },
     setState:function(st){ saveLocal(st); dirty=true; schedulePush(); }
   };
+  function buildStatus(){
+    if(document.getElementById('syncstatus')) return;
+    var wrap=document.querySelector('.wrap'); if(!wrap) return;
+    var d=document.createElement('div'); d.id='syncstatus'; d.className='syncstatus'; d.textContent='同期：準備中';
+    wrap.appendChild(d);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', buildStatus); else buildStatus();
   var config={apiKey:"AIzaSyDOugjJBZF8bJgtOZ-ZPJIpGiSd0zcwmc8",authDomain:"fe-quiz-sync.firebaseapp.com",projectId:"fe-quiz-sync",storageBucket:"fe-quiz-sync.firebasestorage.app",messagingSenderId:"624934588626",appId:"1:624934588626:web:db74c2f5c3a6d521311d0b"};
-  Promise.all([
-    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'),
-    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js')
-  ]).then(function(mods){
-    var appMod=mods[0]; fsMod=mods[1];
-    var app=appMod.initializeApp(config);
-    db=fsMod.getFirestore(app);
-    var key=getKey(); if(!key) return;
-    docRef=fsMod.doc(db, 'sync', key);
-    return fsMod.getDoc(docRef).then(function(snap){
-      if(snap.exists()){
-        var d=snap.data();
-        if(d && d.state) lastRemoteProgress=progressOf(d.state);
-        if(d && d.state && d.updatedAt && d.updatedAt>getAt() && !dirty){ adopt(d.state, d.updatedAt); }
-      } else {
-        if(loadLocal()) push();
-      }
-      fsMod.onSnapshot(docRef, function(snap2){
-        if(!snap2.exists()) return;
-        var d2=snap2.data();
-        if(d2 && d2.state) lastRemoteProgress=progressOf(d2.state);
-        if(d2 && d2.state && d2.updatedAt && d2.updatedAt>getAt() && !dirty){ adopt(d2.state, d2.updatedAt); }
-      });
-    });
-  }).catch(function(){});
+  function parseRemote(d){
+    if(d && d.stateJson){ try{ return JSON.parse(d.stateJson); }catch(e){} }
+    return null;
+  }
+  function initSync(){
+    try{
+      firebase.initializeApp(config);
+      var db=firebase.firestore();
+      docRef=db.collection('sync').doc(getKey());
+      docRef.get().then(function(snap){
+        if(snap.exists){
+          var d=snap.data(); var rs=parseRemote(d);
+          if(rs) lastRemoteProgress=progressOf(rs);
+          if(rs && d.updatedAt && d.updatedAt>getAt() && !dirty){ adopt(rs, d.updatedAt); }
+          setStatus('同期：接続しました');
+        } else {
+          setStatus('同期：接続しました');
+          if(loadLocal()) push();
+        }
+        docRef.onSnapshot(function(snap2){
+          if(!snap2.exists) return;
+          var d2=snap2.data(); var rs2=parseRemote(d2);
+          if(rs2) lastRemoteProgress=progressOf(rs2);
+          if(rs2 && d2.updatedAt && d2.updatedAt>getAt() && !dirty){ adopt(rs2, d2.updatedAt); }
+        }, function(err){ setStatus('同期：エラー（'+errText(err)+'）'); });
+      }).catch(function(err){ setStatus('同期：エラー（'+errText(err)+'）'); });
+    }catch(err){ setStatus('同期：エラー（'+errText(err)+'）'); }
+  }
+  if(window.firebase && firebase.firestore){ initSync(); }
+  else { window.addEventListener('load', function(){ if(window.firebase && firebase.firestore) initSync(); else setStatus('同期：エラー（Firebaseを読み込めませんでした）'); }); }
 })();
 </script>
 <style>
@@ -114,6 +129,7 @@ h1{font-size:clamp(22px,3.5vw,30px);letter-spacing:-.02em;margin:4px 0 8px;line-
 .witem .wa{font-size:13px;margin-top:6px}
 .witem .we{font-size:13px;line-height:1.7;white-space:pre-wrap;margin-top:6px;color:var(--muted)}
 .hidden{display:none}
+.syncstatus{margin-top:18px;font-size:12px;color:var(--muted);text-align:right}
 .syncbox{margin-top:26px;border:1px solid var(--stroke);border-radius:13px;background:rgba(23,27,43,.85);padding:14px 16px}
 .syncbox-label{font-size:12px;color:var(--muted);margin-bottom:8px}
 .syncbox-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
